@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>지원 페이지</title>
+  <!-- 배너 호스트에 미리 연결 -->
+  <link rel="preconnect" href="https://i.imgur.com" crossorigin>
+  <link rel="dns-prefetch" href="//i.imgur.com">
   <style>
     :root { --gap: 12px; --w: 840px; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; background:#fafafa; color:#111; }
@@ -47,7 +50,7 @@
     <div id="appView" class="card hidden">
       <div class="section">
         <!-- 외부 이미지 차단 방지 -->
-        <img id="headerImage" class="head-img" alt="header" referrerpolicy="no-referrer" />
+        <img id="headerImage" class="head-img" alt="header" referrerpolicy="no-referrer" decoding="async" />
         <div class="row" style="justify-content:space-between; margin-top:8px;">
           <div>
             <div class="h1">지원 정보 입력</div>
@@ -106,6 +109,38 @@
     let CONFIG_FIELDS = [];
     let CONFIG_IMAGE = '';
 
+    /*** 클라이언트 SWR 캐시 (config만) ***/
+    const CFG_CACHE_KEY = 'resume.config';
+    const CFG_TTL_MS = 5 * 60 * 1000; // 5분
+
+    function readConfigCache(){
+      try { return JSON.parse(localStorage.getItem(CFG_CACHE_KEY) || 'null'); } catch { return null; }
+    }
+    function writeConfigCache(cfg){
+      try { localStorage.setItem(CFG_CACHE_KEY, JSON.stringify({ ...cfg, _ts: Date.now() })); } catch {}
+    }
+
+    async function fetchConfigNetwork(){
+      const r = await fetch(`${GAS_BASE_URL}?action=config`, { cache: 'default' });
+      if(!r.ok) throw new Error(`config 실패 (${r.status})`);
+      const cfg = await safeJson(r);
+      writeConfigCache(cfg);
+      return cfg;
+    }
+
+    // 먼저 캐시(유효하면 즉시 사용) → 백그라운드로 최신화
+    async function getConfigSWR(onFresh){
+      const now = Date.now();
+      const cached = readConfigCache();
+      if (cached && now - (cached._ts || 0) < CFG_TTL_MS) {
+        // 최신화는 백그라운드로
+        fetchConfigNetwork().then(fresh => { onFresh?.(fresh); }).catch(()=>{});
+        return cached;
+      }
+      // 캐시 없으면 네트워크 기다림
+      return await fetchConfigNetwork();
+    }
+
     /*** 뷰 전환 ***/
     function showLogin(){ $('#loginView').classList.remove('hidden'); $('#appView').classList.add('hidden'); }
     function showApp(){   $('#loginView').classList.add('hidden');    $('#appView').classList.remove('hidden'); }
@@ -150,15 +185,7 @@
       );
     };
 
-    /*** 서버 통신
-     *  - config: 캐시 허용(서버가 60초 캐시 설정)
-     *  - draft: 항상 최신 (no-store), 캐시버스터 파라미터로 확실히
-     */
-    async function fetchConfig(){
-      const r = await fetch(`${GAS_BASE_URL}?action=config`, { cache: 'default' });
-      if(!r.ok) throw new Error(`config 실패 (${r.status})`);
-      return safeJson(r);
-    }
+    /*** 서버 통신: draft는 항상 최신 */
     async function fetchDraft(loginId){
       const r = await fetch(`${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}&_t=${Date.now()}`, { cache: 'no-store' });
       if(!r.ok) throw new Error(`draft 실패 (${r.status})`);
@@ -215,29 +242,34 @@
       await initApp();
     }
 
+    function applyConfig(cfg){
+      CONFIG_FIELDS = cfg.fields || [];
+      CONFIG_IMAGE  = (cfg.headerImageUrl || '').trim();
+
+      const imgEl = $('#headerImage');
+      if (CONFIG_IMAGE) {
+        imgEl.src = CONFIG_IMAGE;        // 이미지에는 캐시버스터 사용 X
+        imgEl.style.display = 'block';
+      } else {
+        imgEl.removeAttribute('src');
+        imgEl.style.display = 'none';
+      }
+      imgEl.onerror = () => { imgEl.style.display = 'none'; };
+    }
+
     async function initApp(){
       try{
         disableButtons(true);
 
-        // ⚡ config와 draft를 동시에 요청
-        const [cfg, draft] = await Promise.all([
-          fetchConfig(),
-          fetchDraft(LOGIN.email)
-        ]);
+        // 1) config는 캐시 우선(SWR), fresh 도착 시 즉시 반영
+        const cfgPromise = getConfigSWR((fresh)=>applyConfig(fresh));
+        // 2) draft는 실시간 병렬 요청
+        const draftPromise = fetchDraft(LOGIN.email);
 
-        CONFIG_FIELDS = cfg.fields || [];
-        CONFIG_IMAGE  = (cfg.headerImageUrl || '').trim();
+        const cfg = await cfgPromise;     // 캐시가 있으면 즉시 resolve
+        applyConfig(cfg);
 
-        const imgEl = $('#headerImage');
-        if (CONFIG_IMAGE) {
-          imgEl.src = CONFIG_IMAGE;        // 이미지에는 캐시버스터 사용 X
-          imgEl.style.display = 'block';
-        } else {
-          imgEl.removeAttribute('src');
-          imgEl.style.display = 'none';
-        }
-        imgEl.onerror = () => { imgEl.style.display = 'none'; };
-
+        const draft = await draftPromise; // 이어서 draft 반영
         renderFields(CONFIG_FIELDS, draft?.values || {});
       }catch(e){ console.error(e); toast('초기화 실패'); }
       finally{ disableButtons(false); }
