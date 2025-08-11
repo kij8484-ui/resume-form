@@ -46,7 +46,8 @@
     <!-- 앱 화면 -->
     <div id="appView" class="card hidden">
       <div class="section">
-        <img id="headerImage" class="head-img" alt="header" />
+        <!-- referrer 차단 방지를 위해 no-referrer 추가 -->
+        <img id="headerImage" class="head-img" alt="header" referrerpolicy="no-referrer" />
         <div class="row" style="justify-content:space-between; margin-top:8px;">
           <div>
             <div class="h1">지원 정보 입력</div>
@@ -135,7 +136,7 @@
       );
     };
 
-    /*** 서버 통신 (캐시 방지 적용) ***/
+    /*** 서버 통신 (API만 캐시 방지) ***/
     async function fetchConfig(){
       const r = await fetch(bust(`${GAS_BASE_URL}?action=config`), { cache: 'no-store' });
       if(!r.ok) throw new Error(`config 실패 (${r.status})`);
@@ -202,12 +203,21 @@
         disableButtons(true);
         const cfg = await fetchConfig();
         CONFIG_FIELDS = cfg.fields || [];
-        CONFIG_IMAGE = cfg.headerImageUrl || '';
+        CONFIG_IMAGE = (cfg.headerImageUrl || '').trim();
 
         const imgEl = $('#headerImage');
-        imgEl.src = CONFIG_IMAGE ? bust(CONFIG_IMAGE) : '';
-        imgEl.style.display = CONFIG_IMAGE ? 'block' : 'none';
-        imgEl.onerror = () => { imgEl.style.display = 'none'; };
+        // 이미지에는 캐시버스터 제거 + no-referrer로 로드
+        if (CONFIG_IMAGE) {
+          imgEl.src = CONFIG_IMAGE;
+          imgEl.style.display = 'block';
+        } else {
+          imgEl.removeAttribute('src');
+          imgEl.style.display = 'none';
+        }
+        imgEl.onerror = () => {
+          console.warn('Header image failed:', imgEl.src);
+          imgEl.style.display = 'none';
+        };
 
         const draft = await fetchDraft(LOGIN.email);
         const prev = draft?.values || {};
