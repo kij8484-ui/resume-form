@@ -1,3 +1,4 @@
+// /api/gas.js
 export default async function handler(req, res) {
   const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbxbOckddtn-hjlNswqr-3vXkpi2CSFtfruVkArKi37Q59aWa3sjjeYgzKKYT1Ed4LCP/exec';
   try {
@@ -10,23 +11,35 @@ export default async function handler(req, res) {
       catch { res.status(r.status).send(text); }
       return;
     }
+
     if (req.method === 'POST') {
-      const bodyParams = new URLSearchParams();
-      for (const [k, v] of Object.entries(req.body || {})) {
-        bodyParams.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+      // urlencoded로 들어오든 json으로 들어오든 모두 처리
+      let formBody = '';
+      const ctype = (req.headers['content-type'] || '').toLowerCase();
+      if (ctype.includes('application/x-www-form-urlencoded') && typeof req.body === 'string') {
+        formBody = req.body; // 그대로 전달
+      } else {
+        const params = new URLSearchParams();
+        const bodyObj = typeof req.body === 'object' && req.body ? req.body : {};
+        for (const [k, v] of Object.entries(bodyObj)) {
+          params.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+        }
+        formBody = params.toString();
       }
+
       const r = await fetch(GAS_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: bodyParams.toString(),
+        body: formBody,
       });
       const text = await r.text();
       try { res.status(r.status).json(JSON.parse(text)); }
       catch { res.status(r.status).send(text); }
       return;
     }
+
     res.setHeader('Allow', ['GET', 'POST']);
-    res.status(405).json({ ok: false, error: 'Method Not Allowed' });  
+    res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err) });
   }
