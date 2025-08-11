@@ -1,6 +1,6 @@
 // /api/gas.js  (CommonJS 버전)
 module.exports = async function (req, res) {
-  const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbxbOckddtn-hjlNswqr-3vXkpi2CSFtfruVkArKi37Q59aWa3sjjeYgzKKYT1Ed4LCP/exec';
+  const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbwZrYAb19rrJRc9872MvXHxWyp5OZAeU8SxOrx_8z16Ur06KLQle0awKgsdPWgwL4C0/exec';
   try {
     if (req.method === 'GET') {
       const qs = new URLSearchParams(req.query).toString();
