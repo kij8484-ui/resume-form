@@ -3,10 +3,73 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>채용 지원 페이지</title>
+  <title>채용 지원 페이지 – 로그인 테스트</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; padding: 32px; }
+    .card { max-width: 680px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px; }
+    h1 { margin-top: 0; }
+    #me { margin-top: 16px; padding: 16px; background:#fafafa; border:1px solid #eee; border-radius:8px; display:none; }
+    code { background:#f4f4f4; padding:2px 4px; border-radius:4px; }
+  </style>
 </head>
 <body>
-  <h1>Hello! 채용 지원 페이지 연결 테스트</h1>
-  <p>이 페이지가 보이면 Vercel과 resume.hm-link.com 연결이 성공한 것입니다.</p>
+  <div class="card">
+    <h1>Google 로그인 테스트</h1>
+    <p>아래 버튼으로 로그인하면, 브라우저에서 받은 <code>ID 토큰</code>을 해석해 이메일/이름을 화면에 표시합니다.<br>
+       (실서비스에서는 이 토큰을 <b>서버에서 검증</b>해 사용자 세션을 만듭니다.)</p>
+
+    <!-- 1) onload 설정: client_id만 본인 것으로 교체 -->
+    <div id="g_id_onload"
+         data-client_id="1035171128477-4jfnu5mq44uof62d1bssq547c9fnn5jl.apps.googleusercontent.com"
+         data-context="signin"
+         data-ux_mode="popup"
+         data-callback="handleCredentialResponse"
+         data-auto_prompt="false">
+    </div>
+
+    <!-- 2) 버튼 렌더 -->
+    <div class="g_id_signin"
+         data-type="standard"
+         data-size="large"
+         data-shape="pill"
+         data-text="signin_with"
+         data-logo_alignment="left">
+    </div>
+
+    <div id="me"></div>
+  </div>
+
+  <script>
+    // 간단한 JWT 파서 (ID 토큰 payload 확인용)
+    function parseJwt (token) {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      return JSON.parse(jsonPayload);
+    }
+
+    // Google이 콜백할 함수
+    function handleCredentialResponse(response) {
+      try {
+        const payload = parseJwt(response.credential);
+        // payload에 email, name, picture 등이 들어있습니다.
+        const box = document.getElementById('me');
+        box.style.display = 'block';
+        box.innerHTML = `
+          <b>로그인 성공!</b><br>
+          이메일: ${payload.email || '(없음)'}<br>
+          이름: ${payload.name || '(없음)'}<br>
+          <small>sub(고유ID): ${payload.sub}</small>
+        `;
+        // 실제 배포에서는 여기서 ID 토큰(response.credential)을 서버로 보내 검증하세요.
+      } catch (e) {
+        alert('로그인 처리 중 오류가 발생했습니다.');
+        console.error(e);
+      }
+    }
+  </script>
 </body>
 </html>
