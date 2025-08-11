@@ -3,5 +3,11 @@
   "headers": [
     { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
     { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
-  ]
+  ],
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs20.x",
+      "regions": ["hnd1", "sin1"]  // Tokyo 우선, Singapore 보조
+    }
+  }
 }
