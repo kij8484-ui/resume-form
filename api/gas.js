@@ -1,14 +1,28 @@
+// /api/gas.js  (CommonJS 버전, 캐시 방지 헤더 적용)
 module.exports = async function (req, res) {
   const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbwZrYAb19rrJRc9872MvXHxWyp5OZAeU8SxOrx_8z16Ur06KLQle0awKgsdPWgwL4C0/exec';
+
+  const setNoStore = () => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    // Vercel CDN에도 캐시 금지 시그널
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+  };
+
   try {
     if (req.method === 'GET') {
-      const qs = new URLSearchParams(req.query).toString();
+      const qs = new URLSearchParams(req.query || {}).toString();
       const url = `${GAS_BASE_URL}${qs ? `?${qs}` : ''}`;
       const r = await fetch(url);
       const text = await r.text();
-      res.setHeader('Cache-Control', 'no-store'); // 선택: 캐시 방지
-      try { res.status(r.status).json(JSON.parse(text)); }
-      catch { res.status(r.status).send(text); }
+      setNoStore();
+      try {
+        res.status(r.status).json(JSON.parse(text));
+      } catch {
+        res.status(r.status).send(text);
+      }
       return;
     }
 
@@ -32,17 +46,22 @@ module.exports = async function (req, res) {
         body: formBody,
       });
       const text = await r.text();
-      res.setHeader('Cache-Control', 'no-store'); // 선택
-      try { res.status(r.status).json(JSON.parse(text)); }
-      catch { res.status(r.status).send(text); }
+      setNoStore();
+      try {
+        res.status(r.status).json(JSON.parse(text));
+      } catch {
+        res.status(r.status).send(text);
+      }
       return;
     }
 
     res.setHeader('Allow', ['GET', 'POST']);
+    setNoStore();
     res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err) {
-    console.error(err); // 선택: 서버 로그
+    setNoStore();
     res.status(500).json({ ok: false, error: String(err) });
   }
 };
+
 
