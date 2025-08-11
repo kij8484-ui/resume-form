@@ -74,7 +74,11 @@
   <script>
     /*** 환경변수 (적용됨) ***/
     const GOOGLE_CLIENT_ID = '1035171128477-4jfnu5mq44uof62d1bssq547c9fnn5jl.apps.googleusercontent.com';
-    const GAS_BASE_URL     = '/api/gas'; // ← Apps Script URL 대신 프록시 경로
+    const GAS_BASE_URL     = '/api/gas'; // Apps Script는 Vercel 프록시로 호출
+
+    /*** 유틸(캐시 무력화) ***/
+    const bust = (u) => u ? u + (u.includes('?') ? '&' : '?') + `_t=${Date.now()}` : '';
+    async function safeJson(r){ const t=await r.text(); try{ return JSON.parse(t) } catch(e){ console.error('Non-JSON:', t); throw e; } }
 
     /*** 상태/헬퍼 ***/
     const $ = (sel) => document.querySelector(sel);
@@ -131,20 +135,16 @@
       );
     };
 
-    /*** 앱 초기화 ***/
-    async function afterLogin(){
-      if (!LOGIN?.email) { showLogin(); return; }
-      $('#loginInfo').innerHTML =
-        `<div>${escapeHtml(LOGIN.name || LOGIN.email)}</div><div class="muted">${escapeHtml(LOGIN.email)}</div>`;
-      showApp();
-      await initApp();
+    /*** 서버 통신 (캐시 방지 적용) ***/
+    async function fetchConfig(){
+      const r = await fetch(bust(`${GAS_BASE_URL}?action=config`), { cache: 'no-store' });
+      if(!r.ok) throw new Error(`config 실패 (${r.status})`);
+      return safeJson(r);
     }
-
-    /*** 서버 통신 ***/
-    async function fetchConfig(){ const r = await fetch(`${GAS_BASE_URL}?action=config`); if(!r.ok) throw new Error('config 실패'); return r.json(); }
     async function fetchDraft(loginId){
-      const r = await fetch(`${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}`);
-      if(!r.ok) throw new Error('draft 실패'); return r.json();
+      const r = await fetch(bust(`${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}`), { cache: 'no-store' });
+      if(!r.ok) throw new Error(`draft 실패 (${r.status})`);
+      return safeJson(r);
     }
     async function postAction(action, loginId, fields, values){
       const body = new URLSearchParams();
@@ -153,7 +153,8 @@
       body.set('fieldsJson', JSON.stringify(fields));
       body.set('valuesJson', JSON.stringify(values));
       const r = await fetch(GAS_BASE_URL, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      if(!r.ok) throw new Error(action+' 실패'); return r.json();
+      if(!r.ok) throw new Error(action+' 실패');
+      return r.json();
     }
 
     /*** 필드 렌더/수집 ***/
@@ -188,15 +189,25 @@
     }
 
     /*** 앱 로드 ***/
+    async function afterLogin(){
+      if (!LOGIN?.email) { showLogin(); return; }
+      $('#loginInfo').innerHTML =
+        `<div>${escapeHtml(LOGIN.name || LOGIN.email)}</div><div class="muted">${escapeHtml(LOGIN.email)}</div>`;
+      showApp();
+      await initApp();
+    }
+
     async function initApp(){
       try{
         disableButtons(true);
         const cfg = await fetchConfig();
         CONFIG_FIELDS = cfg.fields || [];
         CONFIG_IMAGE = cfg.headerImageUrl || '';
+
         const imgEl = $('#headerImage');
-        imgEl.src = CONFIG_IMAGE || '';
+        imgEl.src = CONFIG_IMAGE ? bust(CONFIG_IMAGE) : '';
         imgEl.style.display = CONFIG_IMAGE ? 'block' : 'none';
+        imgEl.onerror = () => { imgEl.style.display = 'none'; };
 
         const draft = await fetchDraft(LOGIN.email);
         const prev = draft?.values || {};
@@ -228,4 +239,3 @@
   </script>
 </body>
 </html>
-
