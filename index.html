@@ -1,75 +1,226 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>채용 지원 페이지 – 로그인 테스트</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>지원 페이지</title>
   <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; padding: 32px; }
-    .card { max-width: 680px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px; }
-    h1 { margin-top: 0; }
-    #me { margin-top: 16px; padding: 16px; background:#fafafa; border:1px solid #eee; border-radius:8px; display:none; }
-    code { background:#f4f4f4; padding:2px 4px; border-radius:4px; }
+    :root { --gap: 12px; --w: 840px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; background:#fafafa; color:#111; }
+    .wrap { max-width: var(--w); margin: 24px auto 80px; padding: 0 16px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); }
+    .head-img { width:100%; height: 220px; object-fit: cover; border-radius: 12px; background:#f3f4f6; }
+    .h1 { font-size: 22px; font-weight: 700; margin: 18px 0 10px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+    .field { display:flex; flex-direction:column; gap:6px; }
+    .label { font-weight:600; font-size: 14px; }
+    .input, .textarea {
+      border:1px solid #d1d5db; border-radius:10px; padding: 10px 12px; font-size:14px; background:#fff;
+    }
+    .row { display:flex; gap: var(--gap); flex-wrap:wrap; align-items:center; }
+    .btn {
+      border:1px solid #e5e7eb; background:#111; color:#fff; padding:10px 14px; border-radius:999px;
+      cursor:pointer; font-weight:600; font-size:14px;
+    }
+    .btn.outline { background:#fff; color:#111; }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .bar { display:flex; justify-content:flex-end; gap:8px; padding:16px; border-top:1px solid #eee; }
+    .section { padding:18px; }
+    .muted { color:#6b7280; font-size:12px; }
+    .toast { position: fixed; right: 16px; bottom: 16px; background:#111; color:#fff; padding:10px 14px; border-radius:10px; opacity:0; transform: translateY(8px); transition: all .25s; }
+    .toast.show { opacity:1; transform: translateY(0); }
+    @media(max-width:720px){ .grid { grid-template-columns: 1fr; } .head-img{ height: 160px; } }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Google 로그인 테스트</h1>
-    <p>아래 버튼으로 로그인하면, 브라우저에서 받은 <code>ID 토큰</code>을 해석해 이메일/이름을 화면에 표시합니다.<br>
-       (실서비스에서는 이 토큰을 <b>서버에서 검증</b>해 사용자 세션을 만듭니다.)</p>
-
-    <!-- 1) onload 설정: client_id만 본인 것으로 교체 -->
-    <div id="g_id_onload"
-         data-client_id="1035171128477-4jfnu5mq44uof62d1bssq547c9fnn5jl.apps.googleusercontent.com"
-         data-context="signin"
-         data-ux_mode="popup"
-         data-callback="handleCredentialResponse"
-         data-auto_prompt="false">
+  <div class="wrap">
+    <div class="card">
+      <div class="section">
+        <img id="headerImage" class="head-img" alt="header" />
+        <div class="h1">지원 정보 입력</div>
+        <div class="muted">로그인 완료 후 항목을 입력해 주세요. 중간저장 가능하며, 최종제출 시 수정이 제한될 수 있습니다.</div>
+      </div>
+      <div class="section">
+        <form id="applyForm">
+          <div id="fields" class="grid"></div>
+        </form>
+      </div>
+      <div class="bar">
+        <button id="btnDraft" class="btn outline" type="button">중간저장</button>
+        <button id="btnSubmit" class="btn" type="button">최종제출</button>
+      </div>
     </div>
-
-    <!-- 2) 버튼 렌더 -->
-    <div class="g_id_signin"
-         data-type="standard"
-         data-size="large"
-         data-shape="pill"
-         data-text="signin_with"
-         data-logo_alignment="left">
-    </div>
-
-    <div id="me"></div>
   </div>
+  <div id="toast" class="toast"></div>
 
   <script>
-    // 간단한 JWT 파서 (ID 토큰 payload 확인용)
-    function parseJwt (token) {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join(''));
-      return JSON.parse(jsonPayload);
+    // === 환경 설정 ===
+    const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbxbOckddtn-hjlNswqr-3vXkpi2CSFtfruVkArKi37Q59aWa3sjjeYgzKKYT1Ed4LCP/exec'; // 예: https://script.google.com/macros/s/AKfy.../exec
+
+    // === 로그인 ID 연결 (이미 구글로그인 완료 가정)
+    // 실제 프로젝트에서는 로그인 완료 후 얻은 사용자 고유 이메일/ID를 setLoginId(...)로 세팅하세요.
+    let LOGIN_ID = ''; 
+    function setLoginId(id){ LOGIN_ID = id; }
+
+    // 데모용: URL ?loginId=abc@company.com 로 테스트 가능
+    (function initLoginFromQuery(){
+      const q = new URLSearchParams(location.search);
+      const id = q.get('loginId');
+      if (id) setLoginId(id);
+    })();
+
+    // === 유틸 ===
+    const $ = (sel) => document.querySelector(sel);
+    function toast(msg) {
+      const el = $('#toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(()=>el.classList.remove('show'), 2000);
+    }
+    function disableButtons(disabled) {
+      $('#btnDraft').disabled = disabled;
+      $('#btnSubmit').disabled = disabled;
     }
 
-    // Google이 콜백할 함수
-    function handleCredentialResponse(response) {
-      try {
-        const payload = parseJwt(response.credential);
-        // payload에 email, name, picture 등이 들어있습니다.
-        const box = document.getElementById('me');
-        box.style.display = 'block';
-        box.innerHTML = `
-          <b>로그인 성공!</b><br>
-          이메일: ${payload.email || '(없음)'}<br>
-          이름: ${payload.name || '(없음)'}<br>
-          <small>sub(고유ID): ${payload.sub}</small>
+    // === 상태 ===
+    let CONFIG_FIELDS = []; // [{title, colIndex}]
+    let CONFIG_IMAGE = '';
+
+    // === DOM 생성 ===
+    function renderFields(fields, prevValues) {
+      const container = $('#fields');
+      container.innerHTML = '';
+      fields.forEach(f => {
+        const id = 'f_' + f.title;
+        const val = prevValues && prevValues[f.title] ? prevValues[f.title] : '';
+        const type = pickInputType(f.title);
+        const el = document.createElement('div');
+        el.className = 'field';
+        el.innerHTML = `
+          <label class="label" for="${id}">${f.title}</label>
+          <input class="input" id="${id}" name="${f.title}" type="${type}" value="${escapeHtml(val)}" />
         `;
-        // 실제 배포에서는 여기서 ID 토큰(response.credential)을 서버로 보내 검증하세요.
-      } catch (e) {
-        alert('로그인 처리 중 오류가 발생했습니다.');
-        console.error(e);
+        container.appendChild(el);
+      });
+    }
+
+    function pickInputType(title){
+      if (title.includes('메일')) return 'email';
+      if (title.includes('연락처') || title.includes('전화')) return 'tel';
+      if (title.includes('생년') || title.includes('생일')) return 'date';
+      return 'text';
+    }
+
+    function escapeHtml(s){
+      return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    function collectValues(){
+      const values = {};
+      CONFIG_FIELDS.forEach(f=>{
+        const el = document.getElementById('f_'+f.title);
+        values[f.title] = el ? el.value : '';
+      });
+      return values;
+    }
+
+    // === 서버 통신 ===
+    async function fetchConfig() {
+      const res = await fetch(`${GAS_BASE_URL}?action=config`, { method:'GET' });
+      if (!res.ok) throw new Error('config 실패');
+      return res.json();
+    }
+
+    async function fetchDraft(loginId) {
+      const url = `${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}`;
+      const res = await fetch(url, { method:'GET' });
+      if (!res.ok) throw new Error('draft 실패');
+      return res.json();
+    }
+
+    async function postAction(action, loginId, fields, values) {
+      const body = new URLSearchParams();
+      body.set('action', action);
+      body.set('loginId', loginId);
+      body.set('fieldsJson', JSON.stringify(fields));
+      body.set('valuesJson', JSON.stringify(values));
+      const res = await fetch(GAS_BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      if (!res.ok) throw new Error(action+' 실패');
+      return res.json();
+    }
+
+    // === 초기화 ===
+    async function init() {
+      try {
+        if (!LOGIN_ID) {
+          toast('로그인 정보가 없습니다. (loginId 필요)');
+          return;
+        }
+        disableButtons(true);
+
+        // 1) 설정 불러오기
+        const cfg = await fetchConfig();
+        CONFIG_FIELDS = cfg.fields || [];
+        CONFIG_IMAGE = cfg.headerImageUrl || '';
+
+        const img = $('#headerImage');
+        img.src = CONFIG_IMAGE || '';
+        img.style.display = CONFIG_IMAGE ? 'block' : 'none';
+
+        // 2) 이전 저장분 로딩
+        let prev = {};
+        const draft = await fetchDraft(LOGIN_ID);
+        if (draft && draft.values) prev = draft.values;
+
+        // 3) 필드 렌더
+        renderFields(CONFIG_FIELDS, prev);
+
+        disableButtons(false);
+      } catch (err) {
+        console.error(err);
+        toast('초기화 실패');
+        disableButtons(false);
       }
     }
+
+    // === 이벤트 ===
+    $('#btnDraft').addEventListener('click', async ()=>{
+      try {
+        if (!LOGIN_ID) return toast('loginId 없음');
+        disableButtons(true);
+        const values = collectValues();
+        await postAction('save', LOGIN_ID, CONFIG_FIELDS, values);
+        toast('임시 저장되었습니다.');
+      } catch (e) {
+        console.error(e);
+        toast('임시 저장 실패');
+      } finally {
+        disableButtons(false);
+      }
+    });
+
+    $('#btnSubmit').addEventListener('click', async ()=>{
+      try {
+        if (!LOGIN_ID) return toast('loginId 없음');
+        disableButtons(true);
+        const values = collectValues();
+        await postAction('submit', LOGIN_ID, CONFIG_FIELDS, values);
+        toast('최종 제출 완료');
+      } catch (e) {
+        console.error(e);
+        toast('제출 실패');
+      } finally {
+        disableButtons(false);
+      }
+    });
+
+    // 시작
+    init();
   </script>
 </body>
 </html>
+
