@@ -1,6 +1,6 @@
 // /api/gas.js
 module.exports = async function (req, res) {
-  const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbwZrYAb19rrJRc9872MvXHxWyp5OZAeU8SxOrx_8z16Ur06KLQle0awKgsdPWgwL4C0/exec';
+  const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbzUrRc6KKKIPfokQ5XeyO87np6WT2oM2ZbVxrTGvrT0Fga_EyX8yTBn7ybDNg3YiiJ9/exec';
 
   const setCache = (action) => {
     if (action === 'config') {
