@@ -14,31 +14,46 @@
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
     .field { display:flex; flex-direction:column; gap:6px; }
     .label { font-weight:600; font-size: 14px; }
-    .input, .textarea {
-      border:1px solid #d1d5db; border-radius:10px; padding: 10px 12px; font-size:14px; background:#fff;
-    }
+    .input, .textarea { border:1px solid #d1d5db; border-radius:10px; padding: 10px 12px; font-size:14px; background:#fff; }
     .row { display:flex; gap: var(--gap); flex-wrap:wrap; align-items:center; }
-    .btn {
-      border:1px solid #e5e7eb; background:#111; color:#fff; padding:10px 14px; border-radius:999px;
-      cursor:pointer; font-weight:600; font-size:14px;
-    }
+    .btn { border:1px solid #e5e7eb; background:#111; color:#fff; padding:10px 14px; border-radius:999px; cursor:pointer; font-weight:600; font-size:14px; }
     .btn.outline { background:#fff; color:#111; }
     .btn:disabled { opacity:0.5; cursor:not-allowed; }
-    .bar { display:flex; justify-content:flex-end; gap:8px; padding:16px; border-top:1px solid #eee; }
+    .bar { display:flex; justify-content:space-between; gap:8px; padding:16px; border-top:1px solid #eee; align-items:center; }
     .section { padding:18px; }
     .muted { color:#6b7280; font-size:12px; }
     .toast { position: fixed; right: 16px; bottom: 16px; background:#111; color:#fff; padding:10px 14px; border-radius:10px; opacity:0; transform: translateY(8px); transition: all .25s; }
     .toast.show { opacity:1; transform: translateY(0); }
+    .center { display:flex; align-items:center; justify-content:center; min-height: 60vh; }
+    .hidden { display:none !important; }
     @media(max-width:720px){ .grid { grid-template-columns: 1fr; } .head-img{ height: 160px; } }
   </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
+    <!-- 로그인 화면 -->
+    <div id="loginView" class="card">
+      <div class="section">
+        <div class="h1">로그인이 필요합니다</div>
+        <div class="muted" style="margin-bottom:16px">Google 계정으로 로그인 후 지원서를 작성할 수 있습니다.</div>
+        <div class="center" style="padding-bottom:24px">
+          <div id="gsi_btn_container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 앱 화면 -->
+    <div id="appView" class="card hidden">
       <div class="section">
         <img id="headerImage" class="head-img" alt="header" />
-        <div class="h1">지원 정보 입력</div>
-        <div class="muted">로그인 완료 후 항목을 입력해 주세요. 중간저장 가능하며, 최종제출 시 수정이 제한될 수 있습니다.</div>
+        <div class="row" style="justify-content:space-between; margin-top:8px;">
+          <div>
+            <div class="h1">지원 정보 입력</div>
+            <div class="muted">로그인 완료 후 항목을 입력해 주세요. 중간저장 가능하며, 최종제출 시 수정이 제한될 수 있습니다.</div>
+          </div>
+          <div class="muted" id="loginInfo" style="text-align:right"></div>
+        </div>
       </div>
       <div class="section">
         <form id="applyForm">
@@ -46,53 +61,113 @@
         </form>
       </div>
       <div class="bar">
-        <button id="btnDraft" class="btn outline" type="button">중간저장</button>
-        <button id="btnSubmit" class="btn" type="button">최종제출</button>
+        <div class="row" style="gap:8px">
+          <button id="btnDraft" class="btn outline" type="button">중간저장</button>
+          <button id="btnSubmit" class="btn" type="button">최종제출</button>
+        </div>
+        <button id="btnSignOut" class="btn outline" type="button">로그아웃</button>
       </div>
     </div>
   </div>
   <div id="toast" class="toast"></div>
 
   <script>
-    // === 환경 설정 ===
-    const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbxbOckddtn-hjlNswqr-3vXkpi2CSFtfruVkArKi37Q59aWa3sjjeYgzKKYT1Ed4LCP/exec'; // 예: https://script.google.com/macros/s/AKfy.../exec
+    /*** 환경변수 (적용됨) ***/
+    const GOOGLE_CLIENT_ID = '1035171128477-4jfnu5mq44uof62d1bssq547c9fnn5jl.apps.googleusercontent.com';
+    const GAS_BASE_URL     = 'https://script.google.com/macros/s/AKfycbxbOckddtn-hjlNswqr-3vXkpi2CSFtfruVkArKi37Q59aWa3sjjeYgzKKYT1Ed4LCP/exec';
 
-    // === 로그인 ID 연결 (이미 구글로그인 완료 가정)
-    // 실제 프로젝트에서는 로그인 완료 후 얻은 사용자 고유 이메일/ID를 setLoginId(...)로 세팅하세요.
-    let LOGIN_ID = ''; 
-    function setLoginId(id){ LOGIN_ID = id; }
-
-    // 데모용: URL ?loginId=abc@company.com 로 테스트 가능
-    (function initLoginFromQuery(){
-      const q = new URLSearchParams(location.search);
-      const id = q.get('loginId');
-      if (id) setLoginId(id);
-    })();
-
-    // === 유틸 ===
+    /*** 상태/헬퍼 ***/
     const $ = (sel) => document.querySelector(sel);
-    function toast(msg) {
-      const el = $('#toast');
-      el.textContent = msg;
-      el.classList.add('show');
-      setTimeout(()=>el.classList.remove('show'), 2000);
-    }
-    function disableButtons(disabled) {
-      $('#btnDraft').disabled = disabled;
-      $('#btnSubmit').disabled = disabled;
-    }
+    function toast(msg){ const el=$('#toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2000); }
+    function disableButtons(dis){ $('#btnDraft').disabled=dis; $('#btnSubmit').disabled=dis; }
+    function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    function decodeJwt(token){ const [,payload] = token.split('.'); return JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/'))); }
 
-    // === 상태 ===
-    let CONFIG_FIELDS = []; // [{title, colIndex}]
+    let LOGIN = { id:'', name:'', email:'', picture:'' };
+    let CONFIG_FIELDS = [];
     let CONFIG_IMAGE = '';
 
-    // === DOM 생성 ===
-    function renderFields(fields, prevValues) {
-      const container = $('#fields');
-      container.innerHTML = '';
-      fields.forEach(f => {
+    /*** 뷰 전환 ***/
+    function showLogin(){ $('#loginView').classList.remove('hidden'); $('#appView').classList.add('hidden'); }
+    function showApp(){   $('#loginView').classList.add('hidden');    $('#appView').classList.remove('hidden'); }
+
+    function persistLogin(){ localStorage.setItem('resume.login', JSON.stringify(LOGIN)); }
+    function loadPersistedLogin(){
+      try{ const s = localStorage.getItem('resume.login'); if(!s) return null; const o = JSON.parse(s); if(o && o.email) return o; }catch(_){}
+      return null;
+    }
+    function signOut(){
+      localStorage.removeItem('resume.login');
+      LOGIN = { id:'', name:'', email:'', picture:'' };
+      showLogin();
+    }
+
+    /*** GIS 초기화 ***/
+    window.onload = () => {
+      const saved = loadPersistedLogin();
+      if (saved) { LOGIN = saved; afterLogin(); } else { showLogin(); }
+
+      window.google?.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (resp) => {
+          try{
+            const payload = decodeJwt(resp.credential);
+            LOGIN = {
+              id: payload.sub,
+              name: payload.name || '',
+              email: payload.email || '',
+              picture: payload.picture || ''
+            };
+            persistLogin();
+            afterLogin();
+          }catch(e){ console.error(e); toast('로그인에 실패했습니다.'); }
+        },
+        auto_select: false,
+        ux_mode: 'popup'
+      });
+      window.google?.accounts.id.renderButton(
+        document.getElementById('gsi_btn_container'),
+        { type:'standard', theme:'outline', size:'large', text:'continue_with', shape:'pill' }
+      );
+    };
+
+    /*** 앱 초기화 ***/
+    async function afterLogin(){
+      if (!LOGIN?.email) { showLogin(); return; }
+      $('#loginInfo').innerHTML =
+        `<div>${escapeHtml(LOGIN.name || LOGIN.email)}</div><div class="muted">${escapeHtml(LOGIN.email)}</div>`;
+      showApp();
+      await initApp();
+    }
+
+    /*** 서버 통신 ***/
+    async function fetchConfig(){ const r = await fetch(`${GAS_BASE_URL}?action=config`); if(!r.ok) throw new Error('config 실패'); return r.json(); }
+    async function fetchDraft(loginId){
+      const r = await fetch(`${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}`);
+      if(!r.ok) throw new Error('draft 실패'); return r.json();
+    }
+    async function postAction(action, loginId, fields, values){
+      const body = new URLSearchParams();
+      body.set('action', action);
+      body.set('loginId', loginId);
+      body.set('fieldsJson', JSON.stringify(fields));
+      body.set('valuesJson', JSON.stringify(values));
+      const r = await fetch(GAS_BASE_URL, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      if(!r.ok) throw new Error(action+' 실패'); return r.json();
+    }
+
+    /*** 필드 렌더/수집 ***/
+    function pickInputType(title){
+      if (title.includes('메일')) return 'email';
+      if (title.includes('연락처') || title.includes('전화')) return 'tel';
+      if (title.includes('생년') || title.includes('생일')) return 'date';
+      return 'text';
+    }
+    function renderFields(fields, prevValues){
+      const container = $('#fields'); container.innerHTML = '';
+      fields.forEach(f=>{
         const id = 'f_' + f.title;
-        const val = prevValues && prevValues[f.title] ? prevValues[f.title] : '';
+        const val = prevValues?.[f.title] ?? '';
         const type = pickInputType(f.title);
         const el = document.createElement('div');
         el.className = 'field';
@@ -103,18 +178,6 @@
         container.appendChild(el);
       });
     }
-
-    function pickInputType(title){
-      if (title.includes('메일')) return 'email';
-      if (title.includes('연락처') || title.includes('전화')) return 'tel';
-      if (title.includes('생년') || title.includes('생일')) return 'date';
-      return 'text';
-    }
-
-    function escapeHtml(s){
-      return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-    }
-
     function collectValues(){
       const values = {};
       CONFIG_FIELDS.forEach(f=>{
@@ -124,102 +187,44 @@
       return values;
     }
 
-    // === 서버 통신 ===
-    async function fetchConfig() {
-      const res = await fetch(`${GAS_BASE_URL}?action=config`, { method:'GET' });
-      if (!res.ok) throw new Error('config 실패');
-      return res.json();
-    }
-
-    async function fetchDraft(loginId) {
-      const url = `${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}`;
-      const res = await fetch(url, { method:'GET' });
-      if (!res.ok) throw new Error('draft 실패');
-      return res.json();
-    }
-
-    async function postAction(action, loginId, fields, values) {
-      const body = new URLSearchParams();
-      body.set('action', action);
-      body.set('loginId', loginId);
-      body.set('fieldsJson', JSON.stringify(fields));
-      body.set('valuesJson', JSON.stringify(values));
-      const res = await fetch(GAS_BASE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body
-      });
-      if (!res.ok) throw new Error(action+' 실패');
-      return res.json();
-    }
-
-    // === 초기화 ===
-    async function init() {
-      try {
-        if (!LOGIN_ID) {
-          toast('로그인 정보가 없습니다. (loginId 필요)');
-          return;
-        }
+    /*** 앱 로드 ***/
+    async function initApp(){
+      try{
         disableButtons(true);
-
-        // 1) 설정 불러오기
         const cfg = await fetchConfig();
         CONFIG_FIELDS = cfg.fields || [];
         CONFIG_IMAGE = cfg.headerImageUrl || '';
+        const imgEl = $('#headerImage');
+        imgEl.src = CONFIG_IMAGE || '';
+        imgEl.style.display = CONFIG_IMAGE ? 'block' : 'none';
 
-        const img = $('#headerImage');
-        img.src = CONFIG_IMAGE || '';
-        img.style.display = CONFIG_IMAGE ? 'block' : 'none';
-
-        // 2) 이전 저장분 로딩
-        let prev = {};
-        const draft = await fetchDraft(LOGIN_ID);
-        if (draft && draft.values) prev = draft.values;
-
-        // 3) 필드 렌더
+        const draft = await fetchDraft(LOGIN.email);
+        const prev = draft?.values || {};
         renderFields(CONFIG_FIELDS, prev);
-
-        disableButtons(false);
-      } catch (err) {
-        console.error(err);
-        toast('초기화 실패');
-        disableButtons(false);
-      }
+      }catch(e){ console.error(e); toast('초기화 실패'); }
+      finally{ disableButtons(false); }
     }
 
-    // === 이벤트 ===
+    /*** 이벤트 ***/
     $('#btnDraft').addEventListener('click', async ()=>{
-      try {
-        if (!LOGIN_ID) return toast('loginId 없음');
+      try{
+        if(!LOGIN?.email) return toast('로그인이 필요합니다.');
         disableButtons(true);
-        const values = collectValues();
-        await postAction('save', LOGIN_ID, CONFIG_FIELDS, values);
+        await postAction('save', LOGIN.email, CONFIG_FIELDS, collectValues());
         toast('임시 저장되었습니다.');
-      } catch (e) {
-        console.error(e);
-        toast('임시 저장 실패');
-      } finally {
-        disableButtons(false);
-      }
+      }catch(e){ console.error(e); toast('임시 저장 실패'); }
+      finally{ disableButtons(false); }
     });
-
     $('#btnSubmit').addEventListener('click', async ()=>{
-      try {
-        if (!LOGIN_ID) return toast('loginId 없음');
+      try{
+        if(!LOGIN?.email) return toast('로그인이 필요합니다.');
         disableButtons(true);
-        const values = collectValues();
-        await postAction('submit', LOGIN_ID, CONFIG_FIELDS, values);
+        await postAction('submit', LOGIN.email, CONFIG_FIELDS, collectValues());
         toast('최종 제출 완료');
-      } catch (e) {
-        console.error(e);
-        toast('제출 실패');
-      } finally {
-        disableButtons(false);
-      }
+      }catch(e){ console.error(e); toast('제출 실패'); }
+      finally{ disableButtons(false); }
     });
-
-    // 시작
-    init();
+    $('#btnSignOut').addEventListener('click', ()=>{ signOut(); });
   </script>
 </body>
 </html>
