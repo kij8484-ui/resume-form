@@ -46,7 +46,7 @@
     <!-- 앱 화면 -->
     <div id="appView" class="card hidden">
       <div class="section">
-        <!-- referrer 차단 방지 -->
+        <!-- 외부 이미지 차단 방지 -->
         <img id="headerImage" class="head-img" alt="header" referrerpolicy="no-referrer" />
         <div class="row" style="justify-content:space-between; margin-top:8px;">
           <div>
@@ -77,9 +77,11 @@
     const GOOGLE_CLIENT_ID = '1035171128477-4jfnu5mq44uof62d1bssq547c9fnn5jl.apps.googleusercontent.com';
     const GAS_BASE_URL     = '/api/gas';
 
-    /*** 유틸(캐시 무력화) ***/
-    const bust = (u) => u ? u + (u.includes('?') ? '&' : '?') + `_t=${Date.now()}` : '';
-    async function safeJson(r){ const t=await r.text(); try{ return JSON.parse(t) } catch(e){ console.error('Non-JSON:', t); throw e; } }
+    /*** 유틸 ***/
+    async function safeJson(r){
+      const t = await r.text();
+      try { return JSON.parse(t); } catch(e){ console.error('Non-JSON:', t); throw e; }
+    }
 
     /*** 상태/헬퍼 ***/
     const $ = (sel) => document.querySelector(sel);
@@ -148,14 +150,17 @@
       );
     };
 
-    /*** 서버 통신 (API만 캐시 방지) ***/
+    /*** 서버 통신
+     *  - config: 캐시 허용(서버가 60초 캐시 설정)
+     *  - draft: 항상 최신 (no-store), 캐시버스터 파라미터로 확실히
+     */
     async function fetchConfig(){
-      const r = await fetch(bust(`${GAS_BASE_URL}?action=config`), { cache: 'no-store' });
+      const r = await fetch(`${GAS_BASE_URL}?action=config`, { cache: 'default' });
       if(!r.ok) throw new Error(`config 실패 (${r.status})`);
       return safeJson(r);
     }
     async function fetchDraft(loginId){
-      const r = await fetch(bust(`${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}`), { cache: 'no-store' });
+      const r = await fetch(`${GAS_BASE_URL}?action=getDraft&loginId=${encodeURIComponent(loginId)}&_t=${Date.now()}`, { cache: 'no-store' });
       if(!r.ok) throw new Error(`draft 실패 (${r.status})`);
       return safeJson(r);
     }
@@ -213,14 +218,19 @@
     async function initApp(){
       try{
         disableButtons(true);
-        const cfg = await fetchConfig();
+
+        // ⚡ config와 draft를 동시에 요청
+        const [cfg, draft] = await Promise.all([
+          fetchConfig(),
+          fetchDraft(LOGIN.email)
+        ]);
+
         CONFIG_FIELDS = cfg.fields || [];
-        CONFIG_IMAGE = (cfg.headerImageUrl || '').trim();
+        CONFIG_IMAGE  = (cfg.headerImageUrl || '').trim();
 
         const imgEl = $('#headerImage');
-        // 이미지에는 캐시버스터 사용하지 않음 + 오류 시 숨김
         if (CONFIG_IMAGE) {
-          imgEl.src = CONFIG_IMAGE;
+          imgEl.src = CONFIG_IMAGE;        // 이미지에는 캐시버스터 사용 X
           imgEl.style.display = 'block';
         } else {
           imgEl.removeAttribute('src');
@@ -228,9 +238,7 @@
         }
         imgEl.onerror = () => { imgEl.style.display = 'none'; };
 
-        const draft = await fetchDraft(LOGIN.email);
-        const prev = draft?.values || {};
-        renderFields(CONFIG_FIELDS, prev);
+        renderFields(CONFIG_FIELDS, draft?.values || {});
       }catch(e){ console.error(e); toast('초기화 실패'); }
       finally{ disableButtons(false); }
     }
