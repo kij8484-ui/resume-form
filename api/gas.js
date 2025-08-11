@@ -1,4 +1,3 @@
-// /api/gas.js  (CommonJS 버전)
 module.exports = async function (req, res) {
   const GAS_BASE_URL = 'https://script.google.com/macros/s/AKfycbwZrYAb19rrJRc9872MvXHxWyp5OZAeU8SxOrx_8z16Ur06KLQle0awKgsdPWgwL4C0/exec';
   try {
@@ -7,6 +6,7 @@ module.exports = async function (req, res) {
       const url = `${GAS_BASE_URL}${qs ? `?${qs}` : ''}`;
       const r = await fetch(url);
       const text = await r.text();
+      res.setHeader('Cache-Control', 'no-store'); // 선택: 캐시 방지
       try { res.status(r.status).json(JSON.parse(text)); }
       catch { res.status(r.status).send(text); }
       return;
@@ -32,6 +32,7 @@ module.exports = async function (req, res) {
         body: formBody,
       });
       const text = await r.text();
+      res.setHeader('Cache-Control', 'no-store'); // 선택
       try { res.status(r.status).json(JSON.parse(text)); }
       catch { res.status(r.status).send(text); }
       return;
@@ -40,8 +41,8 @@ module.exports = async function (req, res) {
     res.setHeader('Allow', ['GET', 'POST']);
     res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err) {
+    console.error(err); // 선택: 서버 로그
     res.status(500).json({ ok: false, error: String(err) });
   }
 };
-
 
