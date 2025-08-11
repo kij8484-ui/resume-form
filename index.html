@@ -46,7 +46,7 @@
     <!-- 앱 화면 -->
     <div id="appView" class="card hidden">
       <div class="section">
-        <!-- referrer 차단 방지를 위해 no-referrer 추가 -->
+        <!-- referrer 차단 방지 -->
         <img id="headerImage" class="head-img" alt="header" referrerpolicy="no-referrer" />
         <div class="row" style="justify-content:space-between; margin-top:8px;">
           <div>
@@ -73,9 +73,9 @@
   <div id="toast" class="toast"></div>
 
   <script>
-    /*** 환경변수 (적용됨) ***/
+    /*** 환경변수 ***/
     const GOOGLE_CLIENT_ID = '1035171128477-4jfnu5mq44uof62d1bssq547c9fnn5jl.apps.googleusercontent.com';
-    const GAS_BASE_URL     = '/api/gas'; // Apps Script는 Vercel 프록시로 호출
+    const GAS_BASE_URL     = '/api/gas';
 
     /*** 유틸(캐시 무력화) ***/
     const bust = (u) => u ? u + (u.includes('?') ? '&' : '?') + `_t=${Date.now()}` : '';
@@ -86,7 +86,19 @@
     function toast(msg){ const el=$('#toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2000); }
     function disableButtons(dis){ $('#btnDraft').disabled=dis; $('#btnSubmit').disabled=dis; }
     function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-    function decodeJwt(token){ const [,payload] = token.split('.'); return JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/'))); }
+
+    // ✅ 한글 깨짐 방지: JWT UTF-8 디코드
+    function decodeJwt(token){
+      const b64 = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+      const bin = atob(b64);
+      try {
+        const json = new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+        return JSON.parse(json);
+      } catch {
+        const json = decodeURIComponent(bin.split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        return JSON.parse(json);
+      }
+    }
 
     let LOGIN = { id:'', name:'', email:'', picture:'' };
     let CONFIG_FIELDS = [];
@@ -206,7 +218,7 @@
         CONFIG_IMAGE = (cfg.headerImageUrl || '').trim();
 
         const imgEl = $('#headerImage');
-        // 이미지에는 캐시버스터 제거 + no-referrer로 로드
+        // 이미지에는 캐시버스터 사용하지 않음 + 오류 시 숨김
         if (CONFIG_IMAGE) {
           imgEl.src = CONFIG_IMAGE;
           imgEl.style.display = 'block';
@@ -214,10 +226,7 @@
           imgEl.removeAttribute('src');
           imgEl.style.display = 'none';
         }
-        imgEl.onerror = () => {
-          console.warn('Header image failed:', imgEl.src);
-          imgEl.style.display = 'none';
-        };
+        imgEl.onerror = () => { imgEl.style.display = 'none'; };
 
         const draft = await fetchDraft(LOGIN.email);
         const prev = draft?.values || {};
@@ -249,3 +258,4 @@
   </script>
 </body>
 </html>
+
